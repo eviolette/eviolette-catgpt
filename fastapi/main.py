@@ -1,10 +1,11 @@
 # main.py
 
 import textwrap
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any, Dict, List
+from clients.s3_client import S3Client
 
 from clients.openai_client import OpenAIClient  # assumes class is implemented
 import os
@@ -24,6 +25,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_s3 = S3Client('configs/s3_config.yaml')
 
 # Pydantic model
 class PromptRequest(BaseModel):
@@ -124,3 +127,88 @@ def get_json_response(req: JSONPromptRequest):
     print(f"RESPONSE:\t{content}")
 
     return {"type": "json", "content": content}
+
+@app.post("/multi_markdown")
+def get_multi_markdown_response(request: PromptRequest):
+    personas = {
+        "Pharma Executive": "You are a pharma executive, specializing in clinical trials and technology.",
+        "Clinical Data SME": "You are a clinical data expert, specializing in SDTM/ADaM.",
+        "Statistician": "You are a statistician, specializing in clinical trials and technology, who values precision and uncertainty.",
+        "Software Engineer": "You are a software engineer, specializing in clinical trials and technology.",
+        "Batman": "You are Batman. Respond as if you were Batman answering seriously."
+    }
+
+    responses = []
+    for name, persona_prompt in personas.items():
+        response = openai_client.get_text(
+            prompt=request.prompt,
+            role="user",
+            messages=[{"role": "system", "content": persona_prompt}]
+        )
+        responses.append({
+            "persona": name,
+            "content": response
+        })
+
+    return {"type": "markdown_multi", "responses": responses}
+
+class ChatRequest(BaseModel):
+    chat_id: str
+    prompt: str
+    type: str
+    schema_name: str = None  # Optional if not using JSON
+    system: str = "You are a helpful assistant."  # ✅ Add this
+
+@app.post("/chat")
+def chat_handler(request: ChatRequest):
+    chat_id = request.chat_id or "chat-0001"
+    key = f"{_s3.prefixes['chats']}/{chat_id}.json"
+    # Load prior messages (if any)
+    try:
+        messages = _s3.read_json(key)
+    except Exception:
+        messages = []
+
+    # Add user prompt
+    messages.append({"role": "user", "type": request.type, "content": request.prompt})
+
+    # Build LLM message context
+    context = [{"role": "system", "content": request.system}]
+    context += [{"role": m["role"], "content": m["content"]} for m in messages if m["role"] in ["user", "assistant"]]
+
+    # Call OpenAI based on type
+    if request.type == "markdown":
+        output = openai_client.get_text(request.prompt, "user", messages=context)
+    elif request.type == "python":
+        prompt = request.prompt + "\nAs a reminder, you must ONLY return python code inside a ```py ``` code block."
+        output = openai_client.get_python(prompt, "user", messages=context)
+    elif request.type == "json":
+        schema_model = OUTPUT_STRUCTS.get(request.schema_name)
+        if not schema_model:
+            raise HTTPException(status_code=400, detail="Invalid schema_name")
+        output_struct = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_model.__name__,
+                "schema": schema_model.model_json_schema()
+            }
+        }
+        output = openai_client.get_json(request.prompt, output_struct, "user")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported type")
+
+    # Save assistant response
+    messages.append({"role": "assistant", "type": request.type, "content": output})
+    _s3.write_json(key, messages)
+
+    return {"chat_id": chat_id, "response": output}
+
+
+@app.get("/chat/history")
+def get_chat_history(chat_id: str = Query(...)):
+    key = f"{_s3.prefixes['chats']}/{chat_id}.json"
+    try:
+        messages = _s3.read_json(key)
+        return {"chat_id": chat_id, "messages": messages}
+    except Exception:
+        return {"chat_id": chat_id, "messages": []}

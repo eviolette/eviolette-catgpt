@@ -6,6 +6,7 @@ import logging
 import io
 import zipfile
 import pandas as pd
+import json
 
 from typing import Optional, List, Dict, Union
 from pathlib import Path
@@ -426,3 +427,47 @@ class S3Client:
         
     def _teardown(self):
         self._s3 = None
+
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=10))
+    def read_json(self, key: str) -> Union[Dict, List]:
+        """
+        Read a JSON file from S3 and return it as a Python dictionary or list.
+
+        Parameters:
+        - key: Full S3 key path to the JSON file.
+
+        Returns:
+        - Parsed JSON object (dict or list).
+        """
+        try:
+            response = self._s3.get_object(Bucket=self._bucket, Key=key)
+            body = response['Body'].read().decode('utf-8')
+            return json.loads(body)
+        except self._s3.exceptions.NoSuchKey:
+            raise FileNotFoundError(f"No such JSON key: {key}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse JSON at {key}: {e}")
+        except Exception as e:
+            raise RuntimeError(f"Error reading JSON from {key}: {e}")
+
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=10))
+    def write_json(self, key: str, data: Union[Dict, List]) -> None:
+        """
+        Write a Python dictionary or list as a JSON file to S3.
+
+        Parameters:
+        - key: Full S3 key path to write to.
+        - data: Data to serialize and upload.
+        """
+        try:
+            json_str = json.dumps(data, indent=2, ensure_ascii=False)
+            self._s3.put_object(
+                Bucket=self._bucket,
+                Key=key,
+                Body=json_str.encode('utf-8'),
+                ContentType='application/json'
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to write JSON to S3 at key {key}: {e}")

@@ -8,7 +8,7 @@ import {
     Toolbar,
     useTheme
 } from "@mui/material";
-import { Input, AutoGraph} from "@mui/icons-material";
+import {FlashOn} from "@mui/icons-material";
 import { useLocation, Link } from "react-router-dom";
 
 const SideBar = () => {
@@ -49,10 +49,10 @@ const SideBar = () => {
                     <ListItem
                         component={Link}
                         to="/chat"
-                        sx={ListItemStyle('/')}
+                        sx={ListItemStyle('/chat')}
                     >
-                        <Input />
-                        <ListItemText primary="Get Started" />
+                        <FlashOn />
+                        <ListItemText primary="Temporary Chat" />
                     </ListItem>
                     <Divider
                         sx={{
@@ -61,14 +61,6 @@ const SideBar = () => {
                             my: 1,
                         }}
                     />
-                    <ListItem
-                        component={Link}
-                        to="/chat"
-                        sx={ListItemStyle('/')}
-                    >
-                        <AutoGraph />
-                        <ListItemText primary="Chat 1" />
-                    </ListItem>
                 </List>
             </Box>
         </Drawer>

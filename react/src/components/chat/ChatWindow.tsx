@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, TextField, IconButton, MenuItem, Select, InputLabel, FormControl, Paper, Typography } from '@mui/material';
+import { Box, TextField, IconButton, MenuItem, Select, InputLabel, FormControl, Paper, Typography, useTheme } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import axios from 'axios';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { Dialog, DialogTitle, DialogContent, Button } from '@mui/material';
 
 interface ChatMessage {
     role: 'user' | 'assistant';
-    type: 'markdown' | 'python' | 'json' | 'readme';
+    type: 'markdown' | 'markdown:multi' | 'python' | 'json' | 'readme';
     content: string;
     isLoading?: boolean;
 }
@@ -17,12 +18,33 @@ const ChatWindow: React.FC = () => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [expanded, setExpanded] = useState(false);
-    const [format, setFormat] = useState<'markdown' | 'python' | 'readme' | 'json:BasicResponse' | 'json:BasicListResponse'>('markdown');
+    const [format, setFormat] = useState<'markdown' | 'markdown:multi' | 'python' | 'readme' | 'json:BasicResponse' | 'json:BasicListResponse'>('markdown');
     const chatEndRef = useRef<HTMLDivElement | null>(null);
+    const [pendingMultiPersona, setPendingMultiPersona] = useState<null | {
+        prompt: string;
+        responses: { persona: string; content: string }[];
+    }>(null);
+    const theme = useTheme();
+    const isDark = theme.palette.mode === 'dark';
 
     const scrollToBottom = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
+    useEffect(() => {
+        const fetchMessages = async () => {
+            try {
+                const res = await axios.get("http://localhost:8081/chat/history", {
+                    params: { chat_id: "chat-0001" },
+                });
+                const history = res.data.messages as ChatMessage[];
+                setMessages(history);
+            } catch (error) {
+                console.error("Failed to load chat history", error);
+            }
+        };
+
+        fetchMessages();
+    }, []);
 
     useEffect(() => {
         scrollToBottom();
@@ -38,6 +60,43 @@ const ChatWindow: React.FC = () => {
             type: baseType as any,
             content: input,
         };
+
+        // Handle multi-persona separately
+        if (baseType === 'markdown' && schemaName === 'multi') {
+            setMessages((prev) => [...prev, userMessage, {
+                role: 'assistant',
+                type: 'markdown',
+                content: '...',
+                isLoading: true,
+            }]);
+
+            try {
+                const res = await axios.post('http://localhost:8081/multi_markdown', {
+                    prompt: userMessage.content,
+                });
+                setPendingMultiPersona({
+                    prompt: userMessage.content,
+                    responses: res.data.responses,
+                });
+
+                // remove loading placeholder once modal is ready
+                setMessages((prev) => prev.slice(0, -1));
+            } catch (error) {
+                setMessages((prev) => [
+                    ...prev.slice(0, -1),
+                    {
+                        role: 'assistant',
+                        type: 'markdown',
+                        content: '⚠️ Error generating multi-persona response. Check the backend.',
+                    },
+                ]);
+            }
+
+            setInput('');
+            return;
+        }
+
+        // Default case
         setMessages((prev) => [...prev, userMessage, {
             role: 'assistant',
             type: baseType as any,
@@ -47,12 +106,6 @@ const ChatWindow: React.FC = () => {
         setInput('');
 
         try {
-            const endpointMap: Record<string, string> = {
-                markdown: '/markdown',
-                python: '/python',
-                readme: '/readme',
-                json: '/json',
-            };
 
             const payload: any = {
                 prompt: userMessage.content,
@@ -62,12 +115,17 @@ const ChatWindow: React.FC = () => {
                 payload.schema_name = schemaName;
             }
 
-            const res = await axios.post(`http://localhost:8081${endpointMap[baseType]}`, payload);
+            const res = await axios.post("http://localhost:8081/chat", {
+                chat_id: "chat-0001",        // fixed for now
+                prompt: userMessage.content,
+                type: baseType,
+                schema_name: schemaName ?? undefined,
+            });
 
             const botMessage: ChatMessage = {
                 role: 'assistant',
                 type: baseType as any,
-                content: res.data.content,
+                content: res.data.response,
             };
             setMessages((prev) => {
                 const copy = [...prev];
@@ -180,11 +238,12 @@ const ChatWindow: React.FC = () => {
                             label="Type"
                             onChange={(e) => setFormat(e.target.value as any)}
                         >
-                            <MenuItem value="markdown">.md</MenuItem>
+                            <MenuItem value="markdown">Markdown</MenuItem>
+                            <MenuItem value="markdown:multi">Markdown (Multi-Persona)</MenuItem>
+                            <MenuItem value="readme">Markdown (README.md)</MenuItem>
+                            <MenuItem value="json:BasicResponse">JSON (Basic Dictionary)</MenuItem>
+                            <MenuItem value="json:BasicListResponse">JSON (Basic List)</MenuItem>
                             <MenuItem value="python">Python</MenuItem>
-                            <MenuItem value="readme">README.md</MenuItem>
-                            <MenuItem value="json:BasicResponse">JSON - BasicResponse</MenuItem>
-                            <MenuItem value="json:BasicListResponse">JSON - BasicListResponse</MenuItem>
                         </Select>
                     </FormControl>
                 </Box>
@@ -197,6 +256,12 @@ const ChatWindow: React.FC = () => {
                         placeholder="Enter your prompt..."
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={(e) => {
+                            if ((e.metaKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                handleSend();
+                            }
+                        }}
                         onFocus={() => setExpanded(true)}
                         onBlur={() => input.trim() === '' && setExpanded(false)}
                         sx={{
@@ -215,6 +280,43 @@ const ChatWindow: React.FC = () => {
                     </IconButton>
                 </Box>
             </Box>
+            {pendingMultiPersona && (
+                <Dialog open onClose={() => setPendingMultiPersona(null)} fullWidth maxWidth="md">
+                    <DialogTitle>Select a Persona Response</DialogTitle>
+                    <DialogContent>
+                        {pendingMultiPersona.responses.map(({ persona, content }, idx) => (
+                            <Paper key={idx} sx={{ m: 2, p: 2 }}>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                                    {persona}
+                                </Typography>
+                                <SyntaxHighlighter
+                                    language="markdown"
+                                    style={vscDarkPlus}
+                                    wrapLines
+                                    wrapLongLines
+                                    customStyle={{ whiteSpace: 'pre-wrap' }}
+                                >
+                                    {content}
+                                </SyntaxHighlighter>
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                                    <Button variant="contained" onClick={() => {
+                                        setMessages((prev) => [...prev, {
+                                            role: 'assistant',
+                                            type: 'markdown',
+                                            content
+                                        }]);
+                                        setPendingMultiPersona(null);
+                                    }}>
+                                        <Typography variant="h6" sx={{ fontWeight: 'regular', color: isDark ? theme.palette.grey[100] : theme.palette.common.white }}>
+                                            Use this Response
+                                        </Typography>
+                                    </Button>
+                                </Box>
+                            </Paper>
+                        ))}
+                    </DialogContent>
+                </Dialog>
+            )}
         </Box>
     );
 };

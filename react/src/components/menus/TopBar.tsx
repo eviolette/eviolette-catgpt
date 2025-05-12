@@ -55,7 +55,7 @@ const TopBar: React.FC = () => {
                     </Button>
                     <Button
                         color="inherit"
-                        sx={buttonStyle('chats')}
+                        sx={buttonStyle('chat')}
                         component={Link}
                         to="/chat"
                     >
