@@ -1,0 +1,12 @@
+ipykernel
+openai
+pandas
+tiktoken
+openpyxl
+numpy
+pyyaml
+boto3
+fastapi
+httpx
+uvicorn
+tenacity
