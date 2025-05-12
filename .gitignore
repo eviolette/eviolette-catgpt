@@ -162,3 +162,5 @@ venv.bak/
 .idea/*
 
 # END SOURCE: https://raw.githubusercontent.com/scheung38/sample-fastapi/refs/heads/master/.gitignore
+fastapi/configs/openai_config.yaml
+fastapi/configs/s3_config.yaml

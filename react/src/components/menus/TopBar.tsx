@@ -57,7 +57,7 @@ const TopBar: React.FC = () => {
                         color="inherit"
                         sx={buttonStyle('chats')}
                         component={Link}
-                        to="/"
+                        to="/chat"
                     >
                         <Typography variant="h6" sx={{ fontWeight: 'regular', color: isDark ? theme.palette.grey[100] : theme.palette.common.white, }}>
                             Chats

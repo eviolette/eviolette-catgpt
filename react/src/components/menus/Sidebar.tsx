@@ -48,7 +48,7 @@ const SideBar = () => {
                 <List>
                     <ListItem
                         component={Link}
-                        to="/"
+                        to="/chat"
                         sx={ListItemStyle('/')}
                     >
                         <Input />
@@ -63,7 +63,7 @@ const SideBar = () => {
                     />
                     <ListItem
                         component={Link}
-                        to="/"
+                        to="/chat"
                         sx={ListItemStyle('/')}
                     >
                         <AutoGraph />
