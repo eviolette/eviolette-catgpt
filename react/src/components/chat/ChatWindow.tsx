@@ -6,6 +6,9 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import axios from 'axios';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import { Dialog, DialogTitle, DialogContent, Button } from '@mui/material';
+import { CloudOff, DataObject, Notes } from '@mui/icons-material';
+import { ReactComponent as PythonIcon } from '../../assets/python.svg';
+
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -238,12 +241,15 @@ const ChatWindow: React.FC = () => {
                             label="Type"
                             onChange={(e) => setFormat(e.target.value as any)}
                         >
-                            <MenuItem value="markdown">Markdown</MenuItem>
-                            <MenuItem value="markdown:multi">Markdown (Multi-Persona)</MenuItem>
-                            <MenuItem value="readme">Markdown (README.md)</MenuItem>
-                            <MenuItem value="json:BasicResponse">JSON (Basic Dictionary)</MenuItem>
-                            <MenuItem value="json:BasicListResponse">JSON (Basic List)</MenuItem>
-                            <MenuItem value="python">Python</MenuItem>
+                            <MenuItem value="markdown"><Notes />&nbsp; Markdown</MenuItem>
+                            <MenuItem value="json:BasicResponse"><DataObject />&nbsp; JSON (Basic Dictionary)</MenuItem>
+                            <MenuItem value="json:BasicListResponse"><DataObject />&nbsp; JSON (Basic List)</MenuItem>
+                            <MenuItem value="python">
+                                <PythonIcon style={{ width: 20, height: 20, marginRight: 8 }} />
+                                Python
+                            </MenuItem>
+                            <MenuItem value="readme"><CloudOff />&nbsp; Markdown (README.md)</MenuItem>
+                            <MenuItem value="markdown:multi"><CloudOff />&nbsp; Markdown (Multi-Persona)</MenuItem>
                         </Select>
                     </FormControl>
                 </Box>
@@ -307,7 +313,7 @@ const ChatWindow: React.FC = () => {
                                         }]);
                                         setPendingMultiPersona(null);
                                     }}>
-                                        <Typography variant="h6" sx={{ fontWeight: 'regular', color: isDark ? theme.palette.grey[100] : theme.palette.common.white }}>
+                                        <Typography variant="caption" sx={{ fontWeight: 'regular', color: isDark ? theme.palette.grey[100] : theme.palette.common.white }}>
                                             Use this Response
                                         </Typography>
                                     </Button>
