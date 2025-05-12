@@ -10,6 +10,10 @@ from clients.s3_client import S3Client
 from clients.openai_client import OpenAIClient  # assumes class is implemented
 import os
 
+import asyncio
+from fastapi import APIRouter
+from clients.openai_client import OpenAIClient  # assuming it supports async
+
 # Load OpenAI client (assumes YAML path is hardcoded or env-provided)
 openai_client = OpenAIClient("configs/openai_config.yaml")
 
@@ -53,7 +57,7 @@ def get_readme_md_response(request: PromptRequest) -> Dict[str, str]:
         readme = f"""
         ## Context
 
-        Using the above code snippet, generate a README.md file such \
+        Using the above code snippet(s), generate a README.md file such \
         that an LLM reading this file can understand what this code \
         does, and how to use it. 
         
@@ -129,26 +133,25 @@ def get_json_response(req: JSONPromptRequest):
     return {"type": "json", "content": content}
 
 @app.post("/multi_markdown")
-def get_multi_markdown_response(request: PromptRequest):
+async def get_multi_markdown_response(request: PromptRequest):
     personas = {
-        "Pharma Executive": "You are a pharma executive, specializing in clinical trials and technology.",
-        "Clinical Data SME": "You are a clinical data expert, specializing in SDTM/ADaM.",
-        "Statistician": "You are a statistician, specializing in clinical trials and technology, who values precision and uncertainty.",
-        "Software Engineer": "You are a software engineer, specializing in clinical trials and technology.",
-        "Batman": "You are Batman. Respond as if you were Batman answering seriously."
+        "Clinical Data SME": "You are a functional clinical data expert. You started your career working in the clinical data management space, particularly developing functional mapping specifications for SDTM/ADaM standards.",
+        "Pharma CTO": "You are a CTO for a large pharma company. You started your career working in the clinical data management space, particularly researching SDTM/ADaM automation.",
+        "Statistician": "You are a statistician, specializing in clinical trials and technology, who values precision and uncertainty. You started your career working as a SAS/R programmer for SDTM/ADaM conversion, but disliked how old-school the process felt.",
+        "Software Engineer": "You are a software engineer, specializing in clinical trials and technology. You think it's possible to use agentic frameworks and solid full-stack apps to automate the entire clinical data management pipeline, even the data diversity seen in the clinical world."
     }
 
-    responses = []
-    for name, persona_prompt in personas.items():
-        response = openai_client.get_text(
+    async def get_response(name, persona_prompt):
+        openai_client_temp = OpenAIClient("configs/openai_config.yaml")
+        response = openai_client_temp.get_text(
             prompt=request.prompt,
             role="user",
             messages=[{"role": "system", "content": persona_prompt}]
         )
-        responses.append({
-            "persona": name,
-            "content": response
-        })
+        return {"persona": name, "content": response}
+
+    tasks = [get_response(name, prompt) for name, prompt in personas.items()]
+    responses = await asyncio.gather(*tasks)
 
     return {"type": "markdown_multi", "responses": responses}
 
@@ -212,3 +215,7 @@ def get_chat_history(chat_id: str = Query(...)):
         return {"chat_id": chat_id, "messages": messages}
     except Exception:
         return {"chat_id": chat_id, "messages": []}
+    
+
+
+
